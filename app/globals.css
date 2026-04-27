@@ -4,24 +4,66 @@
 
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --foreground: #111827;
+
+  --primary:        #c80b11;
+  --primary-hover:  #a80a0f;
+  --primary-light:  #fff0f0;
+
+  --success:        #16a34a;
+  --warning:        #d97706;
+  --danger:         #dc2626;
+  --info:           #2563eb;
+
+  --border:         #e5e7eb;
+  --border-strong:  #d1d5db;
+  --surface:        #f9fafb;
+  --surface-raised: #ffffff;
+
+  --text-primary:   #111827;
+  --text-secondary: #6b7280;
+  --text-muted:     #9ca3af;
+  --text-inverse:   #ffffff;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  body {
+    @apply bg-white text-gray-900;
+    font-feature-settings: "kern" 1;
   }
-}
 
-body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  *,
+  *::before,
+  *::after {
+    border-color: var(--border);
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold tracking-tight;
+  }
 }
 
 @layer utilities {
   .text-balance {
     text-wrap: balance;
+  }
+
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: #d1d5db transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: #d1d5db;
+    border-radius: 3px;
   }
 }
