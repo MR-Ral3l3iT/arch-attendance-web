@@ -64,7 +64,7 @@ function AcademicYearsSection() {
   async function onSubmit(v: YearForm) {
     try {
       if (modal.item) {
-        await api.put(`/academic-years/${modal.item.id}`, v);
+        await api.patch(`/academic-years/${modal.item.id}`, v);
       } else {
         await api.post("/academic-years", v);
       }
@@ -205,7 +205,7 @@ function SemestersSection() {
   async function onSubmit(v: SemesterForm) {
     try {
       if (modal.item) {
-        await api.put(`/semesters/${modal.item.id}`, v);
+        await api.patch(`/semesters/${modal.item.id}`, v);
       } else {
         await api.post("/semesters", v);
       }
@@ -322,7 +322,7 @@ function FacultiesSection() {
   async function onSubmit(v: FacultyForm) {
     try {
       if (modal.item) {
-        await api.put(`/faculties/${modal.item.id}`, v);
+        await api.patch(`/faculties/${modal.item.id}`, v);
       } else {
         await api.post("/faculties", v);
       }
@@ -432,7 +432,7 @@ function DivisionsSection() {
   async function onSubmit(v: DivisionForm) {
     try {
       if (modal.item) {
-        await api.put(`/divisions/${modal.item.id}`, v);
+        await api.patch(`/divisions/${modal.item.id}`, v);
       } else {
         await api.post("/divisions", v);
       }
@@ -559,7 +559,7 @@ function DepartmentsSection() {
   async function onSubmit(v: DeptForm) {
     try {
       if (modal.item) {
-        await api.put(`/departments/${modal.item.id}`, v);
+        await api.patch(`/departments/${modal.item.id}`, v);
       } else {
         await api.post("/departments", v);
       }
@@ -680,7 +680,7 @@ function YearLevelsSection() {
   async function onSubmit(v: YLForm) {
     try {
       if (modal.item) {
-        await api.put(`/year-levels/${modal.item.id}`, v);
+        await api.patch(`/year-levels/${modal.item.id}`, v);
       } else {
         await api.post("/year-levels", v);
       }

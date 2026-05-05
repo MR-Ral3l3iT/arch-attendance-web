@@ -2,9 +2,9 @@
 
 import { useState, use, useMemo, useEffect, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { ClipboardList, ChevronLeft, ChevronRight, Eye, Search, SlidersHorizontal, X } from "lucide-react";
+import { ClipboardList, ChevronLeft, ChevronRight, Eye, Search, SlidersHorizontal, X, Megaphone } from "lucide-react";
 import { PageHeader, Button, Alert, Avatar, Modal, Select } from "@/components/ui";
-import { useFetch } from "@/hooks/useFetch";
+import { useFetch, parseApiError } from "@/hooks/useFetch";
 import { toast } from "@/store/toast.store";
 import api from "@/lib/api";
 import { cn, formatDate, formatDateTime, getDayLabel } from "@/lib/utils";
@@ -53,6 +53,14 @@ const SUMMARY = [
   { status: "NOT_CHECKED", label: "ยังไม่เช็ค", dot: "bg-gray-300", text: "text-gray-400" },
 ] as const;
 
+const PRESETS = [
+  { label: "ยกคลาสวันนี้",    title: "ยกคลาส",            body: "คาบวันนี้ยกเลิก พบกันคาบหน้า" },
+  { label: "มีทดสอบ",         title: "แจ้งกำหนดทดสอบ",    body: "มีการทดสอบ กรุณาเตรียมความพร้อม" },
+  { label: "เตรียมอุปกรณ์",   title: "เตรียมอุปกรณ์",     body: "คาบหน้ากรุณาเตรียมอุปกรณ์ / วัสดุมาด้วย" },
+  { label: "เลื่อนเวลาเรียน", title: "เลื่อนเวลาเรียน",   body: "คาบเรียนมีการเปลี่ยนแปลงเวลา กรุณาติดตามรายละเอียด" },
+  { label: "ส่งงาน/รายงาน",  title: "แจ้งกำหนดส่งงาน",   body: "อย่าลืมส่งงาน/รายงานตามกำหนด" },
+];
+
 export default function AttendanceCardPage({ params }: { params: Promise<{ scheduleId: string }> }) {
   const { scheduleId } = use(params);
   const searchParams   = useSearchParams();
@@ -85,6 +93,36 @@ export default function AttendanceCardPage({ params }: { params: Promise<{ sched
   const [searchQ, setSearchQ]       = useState("");
   const [filterStatus, setFilter]   = useState<AttendanceStatus | "">("");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Announce state ────────────────────────────────────────────────────────
+  const [announceOpen, setAnnounceOpen] = useState(false);
+  const [annTitle,     setAnnTitle]     = useState("");
+  const [annBody,      setAnnBody]      = useState("");
+  const [sending,      setSending]      = useState(false);
+
+  function openAnnounce() {
+    setAnnTitle(""); setAnnBody("");
+    setAnnounceOpen(true);
+  }
+
+  function applyPreset(p: (typeof PRESETS)[number]) {
+    setAnnTitle(p.title);
+    setAnnBody(p.body);
+  }
+
+  async function sendAnnounce() {
+    if (!sectionId || !annTitle.trim() || !annBody.trim()) return;
+    setSending(true);
+    try {
+      const { data } = await api.post<{ sent: number }>("/notifications/announce", {
+        sectionId, title: annTitle.trim(), body: annBody.trim(),
+      });
+      toast.success(`ส่งประกาศถึงนักศึกษา ${data.sent} คนสำเร็จ`);
+      setAnnounceOpen(false);
+    } catch (e) { toast.error(parseApiError(e)); }
+    finally { setSending(false); }
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   function handleSearchChange(v: string) {
     setSearch(v);
@@ -159,6 +197,17 @@ export default function AttendanceCardPage({ params }: { params: Promise<{ sched
           : undefined}
         icon={<ClipboardList size={20} />}
         breadcrumb={[{ label: "เช็คชื่อ", href: "/teacher/attendance" }, { label: "รายชื่อนักศึกษา" }]}
+        actions={
+          <Button
+            size="md"
+            variant="outline"
+            leftIcon={<Megaphone size={16} />}
+            onClick={openAnnounce}
+            disabled={!sectionId}
+          >
+            แจ้ง นศ.
+          </Button>
+        }
       />
 
       {/* Date nav + summary */}
@@ -190,7 +239,7 @@ export default function AttendanceCardPage({ params }: { params: Promise<{ sched
         </div>
       </div>
 
-      {/* Search + Filter bar — same pattern as teachers/students pages */}
+      {/* Search + Filter bar */}
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <SlidersHorizontal size={15} className="text-gray-400 shrink-0" />
         <div className="relative flex-1 min-w-[180px] max-w-xs">
@@ -257,7 +306,6 @@ export default function AttendanceCardPage({ params }: { params: Promise<{ sched
                   (!status || status === "NOT_CHECKED") && "border-gray-200",
                 )}
               >
-                {/* selfie indicator */}
                 {hasSelfie && (
                   <button
                     onClick={() => setDetail(record!)}
@@ -281,7 +329,6 @@ export default function AttendanceCardPage({ params }: { params: Promise<{ sched
                   <p className="text-xs text-gray-400 mt-0.5">{student.code}</p>
                 </div>
 
-                {/* status buttons */}
                 <div className="flex gap-1.5 mt-0.5">
                   {MARKS.map((m) => (
                     <button
@@ -350,6 +397,85 @@ export default function AttendanceCardPage({ params }: { params: Promise<{ sched
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* Announce modal */}
+      <Modal
+        open={announceOpen}
+        onClose={() => setAnnounceOpen(false)}
+        title={
+          <div className="flex items-center gap-2">
+            <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-primary/10">
+              <Megaphone size={15} className="text-primary" />
+            </span>
+            <span>
+              ประกาศ
+              {schedule && (
+                <span className="font-normal text-gray-500 ml-1.5">
+                  {schedule.section.course.name}
+                  <span className="text-gray-400"> ({schedule.section.name})</span>
+                </span>
+              )}
+            </span>
+          </div>
+        }
+        size="lg"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setAnnounceOpen(false)}>ยกเลิก</Button>
+            <Button
+              leftIcon={<Megaphone size={14} />}
+              onClick={sendAnnounce}
+              loading={sending}
+              disabled={!annTitle.trim() || !annBody.trim()}
+            >
+              ส่งประกาศ
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <p className="text-xs font-medium text-gray-500 mb-2">ข้อความสำเร็จรูป</p>
+            <div className="flex flex-wrap gap-2">
+              {PRESETS.map((p) => (
+                <button
+                  key={p.label}
+                  type="button"
+                  onClick={() => applyPreset(p)}
+                  className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-700 hover:border-primary hover:text-primary hover:bg-primary/5 transition-colors"
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              หัวข้อ <span className="text-danger">*</span>
+            </label>
+            <input
+              value={annTitle}
+              onChange={(e) => setAnnTitle(e.target.value)}
+              placeholder="เช่น วันนี้ยกคลาส"
+              className="w-full h-10 px-3 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              รายละเอียด <span className="text-danger">*</span>
+            </label>
+            <textarea
+              value={annBody}
+              onChange={(e) => setAnnBody(e.target.value)}
+              placeholder="เช่น คาบวันนี้ยกเลิก พบกันคาบหน้า"
+              rows={3}
+              className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+            />
+          </div>
+        </div>
       </Modal>
     </div>
   );

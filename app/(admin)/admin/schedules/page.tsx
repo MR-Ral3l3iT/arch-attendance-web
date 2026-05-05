@@ -71,7 +71,7 @@ export default function SchedulesPage() {
   async function onSubmit(v: ScheduleForm) {
     try {
       if (modal.item) {
-        await api.put(`/schedules/${modal.item.id}`, v);
+        await api.patch(`/schedules/${modal.item.id}`, v);
       } else {
         await api.post("/schedules", v);
       }

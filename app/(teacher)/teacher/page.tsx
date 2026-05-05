@@ -97,9 +97,8 @@ export default function TeacherDashboardPage() {
           {sectionCards.map(({ section, slots, todaySlot }) => (
             <button
               key={section.id}
-              onClick={() => todaySlot
-                ? router.push(`/teacher/attendance/${todaySlot.id}?classDate=${todayStr}`)
-                : router.push(`/teacher/attendance`)
+              onClick={() =>
+                router.push(`/teacher/attendance/${(todaySlot ?? slots[0]).id}?classDate=${todayStr}`)
               }
               className="group text-left bg-white border border-gray-200 rounded-xl p-4 hover:border-primary/40 hover:shadow-md transition-all"
             >

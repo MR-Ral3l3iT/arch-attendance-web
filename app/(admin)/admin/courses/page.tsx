@@ -55,7 +55,7 @@ function CoursesSection({ onSelectCourse }: { onSelectCourse: (c: Course) => voi
   async function onSubmit(v: CourseForm) {
     try {
       if (modal.item) {
-        await api.put(`/courses/${modal.item.id}`, v);
+        await api.patch(`/courses/${modal.item.id}`, v);
       } else {
         await api.post("/courses", v);
       }

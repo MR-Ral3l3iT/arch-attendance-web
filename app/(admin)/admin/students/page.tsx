@@ -96,7 +96,7 @@ export default function StudentsPage() {
     };
     try {
       if (modal.item) {
-        await api.put(`/students/${modal.item.id}`, payload);
+        await api.patch(`/students/${modal.item.id}`, payload);
       } else {
         await api.post("/students", payload);
       }

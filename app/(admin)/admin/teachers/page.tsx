@@ -96,7 +96,7 @@ export default function TeachersPage() {
     };
     try {
       if (modal.item) {
-        await api.put(`/teachers/${modal.item.id}`, payload);
+        await api.patch(`/teachers/${modal.item.id}`, payload);
       } else {
         await api.post("/teachers", payload);
       }

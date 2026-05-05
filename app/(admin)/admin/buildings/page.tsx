@@ -58,7 +58,7 @@ function BuildingsSection() {
   async function onSubmit(v: BuildingForm) {
     try {
       if (modal.item) {
-        await api.put(`/buildings/${modal.item.id}`, v);
+        await api.patch(`/buildings/${modal.item.id}`, v);
       } else {
         await api.post("/buildings", v);
       }
@@ -183,7 +183,7 @@ function RoomsSection() {
   async function onSubmit(v: RoomForm) {
     try {
       if (modal.item) {
-        await api.put(`/rooms/${modal.item.id}`, v);
+        await api.patch(`/rooms/${modal.item.id}`, v);
       } else {
         await api.post("/rooms", v);
       }

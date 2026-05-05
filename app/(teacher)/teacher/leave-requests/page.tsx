@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { FileText } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { FileText, Search, SlidersHorizontal, X } from "lucide-react";
 import { PageHeader, Card, Table, Modal, Alert, Textarea, LeaveStatusBadge, Badge, Button, Select, Pagination } from "@/components/ui";
 import { useFetch, parseApiError } from "@/hooks/useFetch";
 import { toast } from "@/store/toast.store";
@@ -29,10 +29,32 @@ const LIMIT = 20;
 
 export default function TeacherLeaveRequestsPage() {
   const [filterStatus, setFilterStatus] = useState<LeaveRequestStatus | "">("");
-  const [page, setPage] = useState(1);
-  useEffect(() => { setPage(1); }, [filterStatus]);
+  const [classDate,    setClassDate]    = useState("");
+  const [search,       setSearch]       = useState("");
+  const [searchQ,      setSearchQ]      = useState("");
+  const [page,         setPage]         = useState(1);
 
-  const url = `/leave-requests?page=${page}&limit=${LIMIT}${filterStatus ? `&status=${filterStatus}` : ""}`;
+  useEffect(() => { setPage(1); }, [filterStatus, classDate, searchQ]);
+
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function handleSearchChange(v: string) {
+    setSearch(v);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => setSearchQ(v), 400);
+  }
+
+  function clearFilters() {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setSearch(""); setSearchQ(""); setClassDate(""); setFilterStatus(""); setPage(1);
+  }
+  const hasFilter = !!(searchQ || classDate || filterStatus);
+
+  const params = new URLSearchParams({ page: String(page), limit: String(LIMIT) });
+  if (filterStatus) params.set("status",    filterStatus);
+  if (searchQ)      params.set("search",    searchQ);
+  if (classDate)    params.set("classDate", classDate);
+  const url = `/leave-requests?${params}`;
+
   const { data, loading, error, refetch } = useFetch<PaginatedResponse<LeaveRequest>>(url);
 
   const [approveTarget, setApprove] = useState<LeaveRequest | null>(null);
@@ -74,9 +96,54 @@ export default function TeacherLeaveRequestsPage() {
         actions={filterStatus === "PENDING" && meta?.total ? <Badge variant="warning">{meta.total} รายการ</Badge> : undefined}
       />
       <Card>
-        <div className="flex items-center gap-3 mb-4">
-          <Select options={STATUS_OPTIONS} value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value as LeaveRequestStatus | "")} className="w-44" />
+        {/* Filter bar */}
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <SlidersHorizontal size={15} className="text-gray-400 shrink-0" />
+
+          {/* Search */}
+          <div className="relative flex-1 min-w-[180px] max-w-xs">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            <input
+              value={search}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              placeholder="ค้นหาชื่อ / รหัสนักศึกษา"
+              className="w-full h-10 pl-9 pr-3 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+            />
+          </div>
+
+          {/* Date filter */}
+          <div className="relative">
+            <input
+              type="date"
+              value={classDate}
+              onChange={(e) => setClassDate(e.target.value)}
+              className="h-10 px-3 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary text-gray-700"
+            />
+          </div>
+
+          {/* Status filter */}
+          <Select
+            options={STATUS_OPTIONS}
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value as LeaveRequestStatus | "")}
+            className="w-44"
+          />
+
+          {/* Clear */}
+          {hasFilter && (
+            <button
+              onClick={clearFilters}
+              className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition-colors whitespace-nowrap"
+            >
+              <X size={12} /> ล้าง
+            </button>
+          )}
+
+          {meta && (
+            <span className="text-xs text-gray-400 ml-auto whitespace-nowrap">
+              {meta.total} รายการ
+            </span>
+          )}
         </div>
 
         <Table data={rows} keyField="id" loading={loading} emptyMessage="ไม่มีคำขอลา"
