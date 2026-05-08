@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { SlidersHorizontal } from "lucide-react";
-import { PageHeader, Button, Card, Input, Alert } from "@/components/ui";
+import { PageHeader, Button, Card, Input, Alert, Select } from "@/components/ui";
 import { useFetch, parseApiError } from "@/hooks/useFetch";
 import { toast } from "@/store/toast.store";
 import api from "@/lib/api";
+import type { Holiday, Semester } from "@/types";
 
 const settingsSchema = z.object({
   lateThresholdMinutes: z.coerce.number().min(1).max(60),
@@ -29,6 +30,13 @@ interface SystemSettings {
 
 export default function AdminSettingsPage() {
   const { data, loading, error, refetch } = useFetch<SystemSettings>("/system-settings");
+  const { data: semesters } = useFetch<Semester[]>("/semesters");
+  const [holidaySemesterId, setHolidaySemesterId] = useState("");
+  const holidaysUrl = holidaySemesterId ? `/system-settings/holidays?semesterId=${holidaySemesterId}` : null;
+  const { data: holidays, refetch: refetchHolidays } = useFetch<Holiday[]>(holidaysUrl);
+  const [holidayDate, setHolidayDate] = useState("");
+  const [holidayName, setHolidayName] = useState("");
+  const [savingHoliday, setSavingHoliday] = useState(false);
 
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<SettingsForm>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -45,6 +53,35 @@ export default function AdminSettingsPage() {
       toast.success("บันทึกการตั้งค่าสำเร็จ");
       refetch();
     } catch (e) { toast.error(parseApiError(e)); }
+  }
+
+  async function addHoliday() {
+    if (!holidaySemesterId || !holidayDate || !holidayName.trim()) return;
+    setSavingHoliday(true);
+    try {
+      await api.post("/system-settings/holidays", {
+        semesterId: holidaySemesterId,
+        date: holidayDate,
+        name: holidayName.trim(),
+      });
+      toast.success("บันทึกวันหยุดสำเร็จ");
+      setHolidayName("");
+      refetchHolidays();
+    } catch (e) {
+      toast.error(parseApiError(e));
+    } finally {
+      setSavingHoliday(false);
+    }
+  }
+
+  async function deleteHoliday(id: string) {
+    try {
+      await api.delete(`/system-settings/holidays/${id}`);
+      toast.success("ลบวันหยุดสำเร็จ");
+      refetchHolidays();
+    } catch (e) {
+      toast.error(parseApiError(e));
+    }
   }
 
   if (error) return <div><PageHeader title="ตั้งค่าระบบ" icon={<SlidersHorizontal size={20} />} /><Alert variant="danger">{error}</Alert></div>;
@@ -85,6 +122,64 @@ export default function AdminSettingsPage() {
             <Button type="submit" loading={isSubmitting || loading}>บันทึกการตั้งค่า</Button>
           </div>
         </form>
+      </Card>
+
+      <Card className="max-w-3xl mt-6">
+        <div className="space-y-4">
+          <h3 className="text-sm font-semibold text-gray-700">วันหยุดภาคการศึกษา</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <Select
+              options={[
+                { value: "", label: "เลือกภาคการศึกษา" },
+                ...((semesters ?? []).map((s) => ({
+                  value: s.id,
+                  label: `${s.name} (${s.academicYear.name})`,
+                }))),
+              ]}
+              value={holidaySemesterId}
+              onChange={(e) => setHolidaySemesterId(e.target.value)}
+            />
+            <Input
+              type="date"
+              value={holidayDate}
+              onChange={(e) => setHolidayDate(e.target.value)}
+            />
+            <Input
+              placeholder="ชื่อวันหยุด"
+              value={holidayName}
+              onChange={(e) => setHolidayName(e.target.value)}
+            />
+          </div>
+          <div>
+            <Button
+              onClick={addHoliday}
+              loading={savingHoliday}
+              disabled={!holidaySemesterId || !holidayDate || !holidayName.trim()}
+            >
+              เพิ่มวันหยุด
+            </Button>
+          </div>
+
+          {!holidaySemesterId ? (
+            <p className="text-sm text-gray-400">กรุณาเลือกภาคการศึกษาเพื่อดูวันหยุด</p>
+          ) : (holidays ?? []).length === 0 ? (
+            <p className="text-sm text-gray-400">ยังไม่มีวันหยุดในภาคการศึกษานี้</p>
+          ) : (
+            <div className="space-y-2">
+              {(holidays ?? []).map((h) => (
+                <div key={h.id} className="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2">
+                  <div>
+                    <p className="text-sm font-medium text-gray-800">{h.name}</p>
+                    <p className="text-xs text-gray-500">{new Date(h.date).toISOString().slice(0, 10)}</p>
+                  </div>
+                  <Button variant="ghost" size="sm" className="text-danger hover:bg-danger/10" onClick={() => deleteHoliday(h.id)}>
+                    ลบ
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </Card>
     </div>
   );

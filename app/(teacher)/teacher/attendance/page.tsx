@@ -8,12 +8,18 @@ import { useFetch } from "@/hooks/useFetch";
 import { getDayLabel } from "@/lib/utils";
 import type { Schedule, Semester } from "@/types";
 
+interface TeacherProfile {
+  teacherId?: string;
+}
+
 export default function TeacherAttendancePage() {
   const router  = useRouter();
   const [filterSemester, setSem] = useState("");
 
+  const { data: me } = useFetch<TeacherProfile>("/profile/me");
+  const schedulesUrl = me?.teacherId ? `/schedules?teacherId=${me.teacherId}` : null;
   const { data: semesters }  = useFetch<Semester[]>("/semesters");
-  const { data: schedules, loading, error } = useFetch<Schedule[]>("/schedules");
+  const { data: schedules, loading, error } = useFetch<Schedule[]>(schedulesUrl);
 
   const semOptions = (semesters ?? []).map((s) => ({ value: s.id, label: `${s.name} (${s.academicYear.name})` }));
 

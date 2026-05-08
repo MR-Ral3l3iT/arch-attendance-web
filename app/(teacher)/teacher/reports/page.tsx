@@ -7,8 +7,7 @@ import { PageHeader, Button, Card, Select, Table, Alert, StatCard, Pagination } 
 const LIMIT = 20;
 import { useFetch, parseApiError } from "@/hooks/useFetch";
 import { toast } from "@/store/toast.store";
-import api from "@/lib/api";
-import type { Schedule, Semester, AttendanceRecord } from "@/types";
+import type { Schedule, Semester } from "@/types";
 
 // shape จาก GET /reports/schedule/:id/students
 interface StudentSummaryItem {
@@ -25,8 +24,22 @@ interface ScheduleReport {
   students: StudentSummaryItem[];
 }
 
+interface TeacherProfile {
+  teacherId?: string;
+}
+
+function toExcelSheetName(raw: string): string {
+  const cleaned = raw
+    .replace(/[\[\]\*\/\\\?\:]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return (cleaned || "Attendance").slice(0, 31);
+}
+
 export default function TeacherReportsPage() {
-  const { data: schedules } = useFetch<Schedule[]>("/schedules");
+  const { data: me } = useFetch<TeacherProfile>("/profile/me");
+  const schedulesUrl = me?.teacherId ? `/schedules?teacherId=${me.teacherId}` : null;
+  const { data: schedules } = useFetch<Schedule[]>(schedulesUrl);
   const { data: semesters } = useFetch<Semester[]>("/semesters");
 
   const [filterSemester, setSem]   = useState("");
@@ -50,27 +63,37 @@ export default function TeacherReportsPage() {
     : "—";
   const totalAbsent = students.reduce((s, r) => s + r.absent, 0);
 
-  const paged = students.slice((page - 1) * LIMIT, page * LIMIT);
+  const paged = students
+    .slice((page - 1) * LIMIT, page * LIMIT)
+    .map((row) => ({ ...row, rowKey: row.student.id }));
 
   async function handleExport() {
     if (!filterSchedule) { toast.error("กรุณาเลือกรายวิชาก่อน"); return; }
     setExporting(true);
     try {
-      const { data } = await api.get<AttendanceRecord[]>(`/reports/export?scheduleId=${filterSchedule}`);
       const { utils, writeFile } = await import("xlsx");
-      const ws = utils.json_to_sheet(
-        data.map((r: AttendanceRecord) => ({
-          รหัสนักศึกษา: r.student.code,
-          ชื่อ: `${r.student.firstName} ${r.student.lastName}`,
-          วันที่: r.classDate,
-          เวลาเช็คชื่อ: r.checkInTime ?? "—",
-          สถานะ: r.status,
-          หมายเหตุ: r.note ?? "",
-        }))
-      );
+      const rows = students.map((r) => ({
+        รหัสนักศึกษา: r.student.code,
+        ชื่อ: `${r.student.firstName} ${r.student.lastName}`,
+        ตรงเวลา: r.onTime,
+        สาย: r.late,
+        ขาด: r.absent,
+        ลา: r.leave,
+        "เข้าเรียน(%)": Number(r.attendanceRate.toFixed(1)),
+      }));
+      if (rows.length === 0) {
+        toast.error("ไม่พบข้อมูลสำหรับ Export");
+        return;
+      }
+
+      const ws = utils.json_to_sheet(rows);
       const wb = utils.book_new();
-      utils.book_append_sheet(wb, ws, "Attendance");
-      writeFile(wb, `attendance_${new Date().toISOString().slice(0, 10)}.xlsx`);
+      const selectedSchedule = (schedules ?? []).find((s) => s.id === filterSchedule);
+      const courseName = selectedSchedule
+        ? `${selectedSchedule.section.course.code}-${selectedSchedule.section.name}`
+        : "Attendance";
+      utils.book_append_sheet(wb, ws, toExcelSheetName(courseName));
+      writeFile(wb, `attendance_report_${new Date().toISOString().slice(0,10)}.xlsx`);
       toast.success("Export สำเร็จ");
     } catch (e) { toast.error(parseApiError(e)); }
     finally { setExporting(false); }
@@ -108,7 +131,7 @@ export default function TeacherReportsPage() {
           <Card>
             <Table
               data={paged}
-              keyField="student"
+              keyField="rowKey"
               loading={loading}
               emptyMessage="ไม่มีข้อมูล"
               columns={[

@@ -18,6 +18,34 @@ interface ScheduleReport {
   totalSessions: number;
 }
 
+interface StudentScheduleReport {
+  schedule: {
+    id: string;
+    totalClasses: number;
+  };
+  students: Array<{
+    student: {
+      id: string;
+      code: string;
+      firstName: string;
+      lastName: string;
+    };
+    onTime: number;
+    late: number;
+    absent: number;
+    leave: number;
+    attendanceRate: number;
+  }>;
+}
+
+function toExcelSheetName(raw: string): string {
+  const cleaned = raw
+    .replace(/[\[\]\*\/\\\?\:]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return (cleaned || "Attendance").slice(0, 31);
+}
+
 export default function AdminReportsPage() {
   const { data: semesters } = useFetch<Semester[]>("/semesters");
   const { data: schedules } = useFetch<Schedule[]>("/schedules");
@@ -32,29 +60,71 @@ export default function AdminReportsPage() {
     .filter((s) => !filterSemester || s.section.semester.id === filterSemester)
     .map((s) => ({ value: s.id, label: `${s.section.course.code} ${s.section.course.name} — ${s.section.name}` }));
 
-  const reportUrl = filterSchedule ? `/reports/schedule/${filterSchedule}` : null;
-  const { data: report, loading, error } = useFetch<ScheduleReport>(reportUrl);
+  const reportUrl = filterSchedule ? `/reports/schedule/${filterSchedule}/students` : null;
+  const { data: report, loading, error } = useFetch<StudentScheduleReport | ScheduleReport>(reportUrl);
+  const summaryRows: AttendanceSummary[] =
+    report && "students" in report
+      ? report.students.map((r) => ({
+          studentId: r.student.id,
+          studentCode: r.student.code,
+          studentName: `${r.student.firstName} ${r.student.lastName}`,
+          total: r.onTime + r.late + r.absent + r.leave,
+          onTime: r.onTime,
+          late: r.late,
+          absent: r.absent,
+          leave: r.leave,
+          attendanceRate: r.attendanceRate,
+        }))
+      : Array.isArray((report as ScheduleReport | null)?.summary)
+        ? (report as ScheduleReport).summary
+        : [];
+  const totalSessions =
+    report && "students" in report
+      ? report.schedule.totalClasses
+      : (report as ScheduleReport | null)?.totalSessions ?? 0;
 
   async function handleExport() {
     setExporting(true);
     try {
-      const params = new URLSearchParams();
-      if (filterSemester) params.set("semesterId", filterSemester);
-      if (filterSchedule) params.set("scheduleId", filterSchedule);
-      const { data } = await api.get<AttendanceRecord[]>(`/reports/export?${params.toString()}`);
-
       const { utils, writeFile } = await import("xlsx");
-      const ws = utils.json_to_sheet(
-        data.map((r: AttendanceRecord) => ({
+      let rows: Record<string, string | number>[] = [];
+
+      // ถ้าเลือกรายวิชาแล้ว ให้ export ตามตารางรายงานบนหน้าจอ (ไม่เสี่ยงได้ไฟล์ว่างจาก endpoint records)
+      if (filterSchedule) {
+        rows = summaryRows.map((r) => ({
+          รหัสนักศึกษา: r.studentCode,
+          ชื่อ: r.studentName,
+          ตรงเวลา: r.onTime,
+          สาย: r.late,
+          ขาด: r.absent,
+          ลา: r.leave,
+          "เข้าเรียน(%)": Number(r.attendanceRate.toFixed(1)),
+        }));
+      } else {
+        const params = new URLSearchParams();
+        if (filterSemester) params.set("semesterId", filterSemester);
+        const { data } = await api.get<AttendanceRecord[]>(`/reports/export?${params.toString()}`);
+        rows = data.map((r: AttendanceRecord) => ({
           รหัสนักศึกษา: r.student.code,
           ชื่อ: `${r.student.firstName} ${r.student.lastName}`,
           วันที่: r.classDate,
           เวลาเช็คชื่อ: r.checkInTime ?? "—",
           สถานะ: r.status,
-        }))
-      );
+        }));
+      }
+
+      if (rows.length === 0) {
+        toast.error("ไม่พบข้อมูลสำหรับ Export");
+        return;
+      }
+
+      const ws = utils.json_to_sheet(rows);
       const wb = utils.book_new();
-      utils.book_append_sheet(wb, ws, "Attendance");
+      const selectedSchedule = (schedules ?? []).find((s) => s.id === filterSchedule);
+      const courseName = selectedSchedule
+        ? `${selectedSchedule.section.course.code}-${selectedSchedule.section.name}`
+        : "Attendance";
+      utils.book_append_sheet(wb, ws, toExcelSheetName(courseName));
       writeFile(wb, `attendance_report_${new Date().toISOString().slice(0,10)}.xlsx`);
       toast.success("Export สำเร็จ");
     } catch (e) { toast.error(parseApiError(e)); }
@@ -94,21 +164,21 @@ export default function AdminReportsPage() {
       {filterSchedule && report && (
         <>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
-            <StatCard title="จำนวนคาบทั้งหมด" value={report.totalSessions} accent="primary" />
-            <StatCard title="นักศึกษาทั้งหมด" value={report.summary.length} accent="info" />
+            <StatCard title="จำนวนคาบทั้งหมด" value={totalSessions} accent="primary" />
+            <StatCard title="นักศึกษาทั้งหมด" value={summaryRows.length} accent="info" />
             <StatCard title="เฉลี่ยเข้าเรียน"
-              value={report.summary.length > 0
-                ? `${(report.summary.reduce((s, r) => s + r.attendanceRate, 0) / report.summary.length).toFixed(1)}%`
+              value={summaryRows.length > 0
+                ? `${(summaryRows.reduce((s, r) => s + r.attendanceRate, 0) / summaryRows.length).toFixed(1)}%`
                 : "—"}
               accent="success" />
             <StatCard title="ขาดเรียนรวม"
-              value={report.summary.reduce((s, r) => s + r.absent, 0)}
+              value={summaryRows.reduce((s, r) => s + r.absent, 0)}
               accent="warning" />
           </div>
 
           <Card>
             <Table
-              data={report.summary.slice((page - 1) * LIMIT, page * LIMIT)} keyField="studentId" loading={loading}
+              data={summaryRows.slice((page - 1) * LIMIT, page * LIMIT)} keyField="studentId" loading={loading}
               emptyMessage="ไม่มีข้อมูลนักศึกษา"
               columns={[
                 { key: "studentCode", header: "รหัส", render: (r) => r.studentCode },
@@ -127,8 +197,8 @@ export default function AdminReportsPage() {
             <div className="px-4 pb-4">
               <Pagination
                 page={page}
-                totalPages={Math.ceil(report.summary.length / LIMIT)}
-                total={report.summary.length}
+                totalPages={Math.ceil(summaryRows.length / LIMIT)}
+                total={summaryRows.length}
                 limit={LIMIT}
                 onPageChange={setPage}
               />

@@ -43,6 +43,10 @@ function AttendanceStats({ scheduleId, classDate }: { scheduleId: string; classD
   );
 }
 
+interface TeacherProfile {
+  teacherId?: string;
+}
+
 export default function TeacherDashboardPage() {
   const { user }  = useAuthStore();
   const router    = useRouter();
@@ -50,7 +54,9 @@ export default function TeacherDashboardPage() {
   const todayStr  = today.toISOString().slice(0, 10);
   const todayDay  = JS_DAY_TO_API[today.getDay()];
 
-  const { data: schedules, loading: sl } = useFetch<Schedule[]>("/schedules");
+  const { data: me } = useFetch<TeacherProfile>("/profile/me");
+  const schedulesUrl = me?.teacherId ? `/schedules?teacherId=${me.teacherId}` : null;
+  const { data: schedules, loading: sl } = useFetch<Schedule[]>(schedulesUrl);
   const { data: pending,   loading: pl } = useFetch<LeaveRequest[]>("/leave-requests/pending");
 
   // group schedules by sectionId → one card per section

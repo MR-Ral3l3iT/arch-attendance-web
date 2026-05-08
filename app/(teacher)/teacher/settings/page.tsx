@@ -21,9 +21,12 @@ const settingsSchema = z.object({
 type SettingsForm = z.infer<typeof settingsSchema>;
 
 interface AttendanceSettings extends SettingsForm { id?: string; }
+interface TeacherProfile { teacherId?: string; }
 
 export default function TeacherSettingsPage() {
-  const { data: schedules } = useFetch<Schedule[]>("/schedules");
+  const { data: me } = useFetch<TeacherProfile>("/profile/me");
+  const schedulesUrl = me?.teacherId ? `/schedules?teacherId=${me.teacherId}` : null;
+  const { data: schedules } = useFetch<Schedule[]>(schedulesUrl);
   const { data: semesters } = useFetch<Semester[]>("/semesters");
 
   const [filterSem, setFilter]   = useState("");

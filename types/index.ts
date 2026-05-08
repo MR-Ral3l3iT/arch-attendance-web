@@ -69,6 +69,14 @@ export interface Semester {
   academicYear: AcademicYear;
 }
 
+export interface Holiday {
+  id: string;
+  semesterId: string;
+  date: string;
+  name: string;
+  createdById?: string | null;
+}
+
 export interface Faculty {
   id: string;
   code: string;

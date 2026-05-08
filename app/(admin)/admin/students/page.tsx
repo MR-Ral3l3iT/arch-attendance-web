@@ -30,6 +30,134 @@ type StudentForm = z.infer<typeof studentSchema>;
 interface ImportResult { success: number; failed: number; errors: { row: number; message: string }[]; }
 interface YearLevelData { id: string; level: number; name: string; }
 
+/** หัวคอลัมน์ไทยในเทมเพลต → ชื่อคอลัมน์ CSV ที่ส่ง API */
+const STUDENT_IMPORT_HEADER_TH_TO_KEY: Record<string, string> = {
+  อีเมล: "email",
+  ชื่อ: "firstName",
+  นามสกุล: "lastName",
+  "รหัสนักศึกษา": "studentCode",
+  สาขา: "departmentCode",
+  "ชั้นปี": "yearLevel",
+  เบอร์โทรศัพท์: "phone",
+  เบอร์โทร: "phone",
+};
+
+const STUDENT_IMPORT_HEADERS_TH = [
+  "อีเมล",
+  "ชื่อ",
+  "นามสกุล",
+  "รหัสนักศึกษา",
+  "สาขา",
+  "ชั้นปี",
+  "เบอร์โทรศัพท์",
+] as const;
+
+const STUDENT_IMPORT_KEYS_CSV = [
+  "email",
+  "firstName",
+  "lastName",
+  "studentCode",
+  "departmentCode",
+  "yearLevel",
+  "phone",
+] as const;
+
+const IMPORT_MODAL_COLS: { th: string; en: string }[] = [
+  { th: "อีเมล", en: "email" },
+  { th: "ชื่อ", en: "firstName" },
+  { th: "นามสกุล", en: "lastName" },
+  { th: "รหัสนักศึกษา", en: "studentCode" },
+  { th: "สาขา", en: "departmentCode" },
+  { th: "ชั้นปี", en: "yearLevel" },
+  { th: "เบอร์โทรศัพท์", en: "phone" },
+];
+
+function deptImportLabel(d: Department, all: Department[]): string {
+  return all.filter((x) => x.name === d.name).length > 1 ? `${d.name} (${d.code})` : d.name;
+}
+
+function ylImportLabel(y: YearLevelData, all: YearLevelData[]): string {
+  return all.filter((x) => x.name === y.name).length > 1 ? `${y.name} (${y.level})` : y.name;
+}
+
+function buildDeptLabelToCode(departments: Department[]): Map<string, string> {
+  const m = new Map<string, string>();
+  for (const d of departments) {
+    m.set(deptImportLabel(d, departments).trim(), d.code);
+    m.set(d.name.trim(), d.code);
+    m.set(d.code.trim(), d.code);
+  }
+  return m;
+}
+
+function buildYlLabelToLevel(yearLevels: YearLevelData[]): Map<string, string> {
+  const m = new Map<string, string>();
+  for (const y of yearLevels) {
+    const lvl = String(y.level);
+    m.set(ylImportLabel(y, yearLevels).trim(), lvl);
+    m.set(y.name.trim(), lvl);
+    m.set(lvl, lvl);
+  }
+  return m;
+}
+
+function resolveDeptForImport(raw: string, labelToCode: Map<string, string>, departments: Department[]): string {
+  const t = raw.trim();
+  if (!t) return "";
+  if (labelToCode.has(t)) return labelToCode.get(t)!;
+  if (departments.some((d) => d.code === t)) return t;
+  return t;
+}
+
+function resolveYlForImport(raw: string, labelToLevel: Map<string, string>, yearLevels: YearLevelData[]): string {
+  const t = raw.trim();
+  if (!t) return "";
+  if (labelToLevel.has(t)) return labelToLevel.get(t)!;
+  if (yearLevels.some((y) => String(y.level) === t)) return t;
+  return t;
+}
+
+function escapeCsvCell(v: string): string {
+  if (/[",\n\r]/.test(v)) return `"${v.replace(/"/g, '""')}"`;
+  return v;
+}
+
+/** แปลงแผ่นแรกเป็น CSV มาตรฐาน (หัวอังกฤษ + สาขาเป็นรหัส + ชั้นปีเป็นตัวเลข) */
+function normalizeStudentImportToCsv(
+  rows: string[][],
+  departments: Department[],
+  yearLevels: YearLevelData[],
+): string {
+  if (!rows.length) throw new Error("ไฟล์ว่าง");
+  const deptMap = buildDeptLabelToCode(departments);
+  const ylMap = buildYlLabelToLevel(yearLevels);
+
+  const keys = rows[0].map((h) => {
+    const t = String(h).trim();
+    return STUDENT_IMPORT_HEADER_TH_TO_KEY[t] ?? t;
+  });
+
+  const out: string[][] = [[...STUDENT_IMPORT_KEYS_CSV]];
+  for (let i = 1; i < rows.length; i++) {
+    const cells = rows[i] ?? [];
+    if (cells.every((c) => String(c).trim() === "")) continue;
+
+    const row: Record<string, string> = {};
+    keys.forEach((key, j) => {
+      row[key] = String(cells[j] ?? "").trim();
+    });
+
+    if (row.departmentCode !== undefined)
+      row.departmentCode = resolveDeptForImport(row.departmentCode, deptMap, departments);
+    if (row.yearLevel !== undefined)
+      row.yearLevel = resolveYlForImport(row.yearLevel, ylMap, yearLevels);
+
+    out.push(STUDENT_IMPORT_KEYS_CSV.map((k) => row[k] ?? ""));
+  }
+
+  return out.map((line) => line.map(escapeCsvCell).join(",")).join("\r\n");
+}
+
 export default function StudentsPage() {
   const [page, setPage]           = useState(1);
   const [search, setSearch]       = useState("");
@@ -135,23 +263,24 @@ export default function StudentsPage() {
       const XLSX = (xlsxMod as any).default ?? xlsxMod;
       const { strToU8, strFromU8, unzipSync, zipSync } = await import("fflate");
 
-      const deptCodes = (departments ?? []).map((d) => d.code).filter(Boolean);
-      const ylValues  = (yearLevels ?? []).map((y) => String(y.level));
+      const deptList = departments ?? [];
+      const ylList = yearLevels ?? [];
+      const deptLabels = deptList.map((d) => deptImportLabel(d, deptList)).filter(Boolean);
+      const ylLabels = ylList.map((y) => ylImportLabel(y, ylList)).map(String);
 
       const wb = XLSX.utils.book_new();
 
       // ── Sheet 1: data entry ──
       // password ไม่ต้องระบุ — API จะใช้ studentCode เป็น password อัตโนมัติ
-      const headers = ["email", "firstName", "lastName", "studentCode", "departmentCode", "yearLevel", "phone"];
-      const example1 = [
+      const headers = [...STUDENT_IMPORT_HEADERS_TH];
+      const exDept = deptList[0] ? deptImportLabel(deptList[0], deptList) : "สาขาตัวอย่าง";
+      const exYl = ylList[0] ? ylImportLabel(ylList[0], ylList) : "ชั้นปีตัวอย่าง";
+      const exampleRow = [
         "somchai@example.com", "สมชาย", "ใจดี", "6701001",
-        deptCodes[0] ?? "CS", ylValues[0] ?? "1", "0812345678",
+        exDept, exYl, "0812345678",
       ];
-      const example2 = [
-        "somsri@example.com", "สมศรี", "รักเรียน", "6701002",
-        deptCodes[1] ?? deptCodes[0] ?? "CS", ylValues[0] ?? "1", "",
-      ];
-      const ws = XLSX.utils.aoa_to_sheet([headers, example1, example2]);
+      // แถวที่ 1 = หัวคอลัมน์ (ตรงกับที่ API import รองรับ), แถวที่ 2 = ตัวอย่าง 1 แถว
+      const ws = XLSX.utils.aoa_to_sheet([headers, exampleRow]);
       ws["!cols"] = [
         { wch: 28 }, { wch: 14 }, { wch: 14 },
         { wch: 14 }, { wch: 16 }, { wch: 12 }, { wch: 14 },
@@ -176,26 +305,36 @@ export default function StudentsPage() {
       ylWs["!cols"] = [{ wch: 12 }, { wch: 20 }];
       XLSX.utils.book_append_sheet(wb, ylWs, "ชั้นปี (อ้างอิง)");
 
-      // Write xlsx → Uint8Array (no data-validation yet)
-      const raw = XLSX.write(wb, { bookType: "xlsx", type: "array" }) as Uint8Array;
+      // SheetJS `type: "array"` returns ArrayBuffer; fflate needs Uint8Array (length/subarray).
+      const written = XLSX.write(wb, { bookType: "xlsx", type: "array" }) as ArrayBuffer | Uint8Array;
+      const raw = written instanceof Uint8Array ? written : new Uint8Array(written);
 
       // ── Inject <dataValidations> into sheet1.xml via ZIP manipulation ──────
       const files = unzipSync(raw);
 
-      // Find the sheet1 XML key (xl/worksheets/sheet1.xml or similar)
-      const sheetKey = Object.keys(files).find(
+      // ต้องเป็น sheet แรกเสมอ (ไม่พึ่งลำดับ key จาก unzip)
+      const sheetKeys = Object.keys(files).filter(
         (k) => k.startsWith("xl/worksheets/sheet") && k.endsWith(".xml")
       );
+      const sheetKey = sheetKeys
+        .map((k) => {
+          const m = /sheet(\d+)\.xml$/.exec(k);
+          return { k, n: m ? parseInt(m[1], 10) : 999 };
+        })
+        .sort((a, b) => a.n - b.n)[0]?.k;
 
       if (sheetKey) {
         let sheetXml = strFromU8(files[sheetKey]);
 
-        // Build dataValidations XML
-        const dvDeptFormula = deptCodes.length
-          ? `&quot;${deptCodes.join(",")}&quot;`
-          : "&quot;CS,IT,ENG&quot;";
-        const dvYlFormula = ylValues.length
-          ? `&quot;${ylValues.join(",")}&quot;`
+        const escXml = (s: string) =>
+          s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+        // Build dataValidations XML (รหัสสาขาอาจมี & ฯลฯ ต้อง escape)
+        const dvDeptFormula = deptLabels.length
+          ? `&quot;${deptLabels.map((c) => escXml(c)).join(",")}&quot;`
+          : "&quot;สาขา A,สาขา B&quot;";
+        const dvYlFormula = ylLabels.length
+          ? `&quot;${ylLabels.map((c) => escXml(c)).join(",")}&quot;`
           : "&quot;1,2,3,4&quot;";
 
         // headers: email(A) firstName(B) lastName(C) studentCode(D) departmentCode(E) yearLevel(F) phone(G)
@@ -210,13 +349,17 @@ export default function StudentsPage() {
           `</dataValidations>`,
         ].join("");
 
-        // Insert before </worksheet> (end tag)
-        sheetXml = sheetXml.replace("</worksheet>", `${dvXml}</worksheet>`);
+        // OOXML: dataValidations ต้องอยู่ก่อน ignoredErrors/drawing ฯลฯ — แทรกหลัง </sheetData> เท่านั้น
+        if (!sheetXml.includes("</sheetData>")) {
+          throw new Error("Unexpected worksheet XML: no sheetData");
+        }
+        sheetXml = sheetXml.replace("</sheetData>", `</sheetData>${dvXml}`);
         files[sheetKey] = strToU8(sheetXml);
       }
 
       const patched = zipSync(files, { level: 6 });
-      const blob = new Blob([patched.buffer as ArrayBuffer], {
+      const patchedBytes = new Uint8Array(patched);
+      const blob = new Blob([patchedBytes], {
         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       });
       const url = URL.createObjectURL(blob);
@@ -242,19 +385,31 @@ export default function StudentsPage() {
     if (!importFile) return;
     setImporting(true); setResult(null);
     try {
-      let fileToSend = importFile;
+      const xlsxMod = await import("xlsx");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const XLSX = (xlsxMod as any).default ?? xlsxMod;
+      const depts = departments ?? [];
+      const yls = yearLevels ?? [];
 
-      // Convert Excel to CSV before sending
+      let fileToSend: File;
+
       if (/\.xlsx?$/i.test(importFile.name)) {
-        const xlsxMod = await import("xlsx");
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const XLSX = (xlsxMod as any).default ?? xlsxMod;
         const arrayBuf = await importFile.arrayBuffer();
         const wb = XLSX.read(new Uint8Array(arrayBuf), { type: "array" });
         const ws = wb.Sheets[wb.SheetNames[0]];
-        const csv = XLSX.utils.sheet_to_csv(ws);
-        const blob = new Blob([csv], { type: "text/csv" });
-        fileToSend = new File([blob], importFile.name.replace(/\.xlsx?$/i, ".csv"), { type: "text/csv" });
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as string[][];
+        const csv = normalizeStudentImportToCsv(rows, depts, yls);
+        fileToSend = new File([csv], importFile.name.replace(/\.xlsx?$/i, ".csv"), { type: "text/csv" });
+      } else {
+        const text = await importFile.text();
+        const wb = XLSX.read(text, { type: "string" });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as string[][];
+        const csv = normalizeStudentImportToCsv(rows, depts, yls);
+        const outName = /\.csv$/i.test(importFile.name)
+          ? importFile.name
+          : `${importFile.name.replace(/\.[^.]+$/, "")}.csv`;
+        fileToSend = new File([csv], outName, { type: "text/csv" });
       }
 
       const form = new FormData();
@@ -445,17 +600,17 @@ export default function StudentsPage() {
               </div>
             </div>
             <div className="text-xs text-gray-600">
-              <p className="font-medium text-gray-900 mb-1">คอลัมน์ที่จำเป็น:</p>
+              <p className="font-medium text-gray-900 mb-1">คอลัมน์ (เทมเพลตเป็นภาษาไทย ระบบแปลงให้ตอนนำเข้า):</p>
               <div className="flex flex-wrap gap-1.5">
-                {["email","firstName","lastName","studentCode","departmentCode","yearLevel","phone"].map((col) => (
-                  <code key={col} className="px-1.5 py-0.5 rounded bg-white border border-gray-200 text-[11px] font-mono text-gray-700">
-                    {col}
+                {IMPORT_MODAL_COLS.map(({ th, en }) => (
+                  <code key={en} className="px-1.5 py-0.5 rounded bg-white border border-gray-200 text-[11px] text-gray-700" title={en}>
+                    {th}
                   </code>
                 ))}
               </div>
             </div>
             <p className="text-xs text-gray-500">
-              ดาวน์โหลด Template เพื่อรับไฟล์ตัวอย่างที่มี dropdown สาขาและชั้นปีจากระบบ
+              ดาวน์โหลด Template หัวตารางภาษาไทย — คอลัมน์สาขา/ชั้นปีเลือกเป็นชื่อไทยได้ ระบบจะแมปเป็นรหัสก่อนส่ง API
             </p>
           </div>
 

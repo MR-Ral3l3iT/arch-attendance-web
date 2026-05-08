@@ -61,6 +61,8 @@ const PRESETS = [
   { label: "ส่งงาน/รายงาน",  title: "แจ้งกำหนดส่งงาน",   body: "อย่าลืมส่งงาน/รายงานตามกำหนด" },
 ];
 
+type AnnouncementType = "GENERAL" | "CANCEL_CLASS" | "EXAM" | "RESCHEDULE";
+
 export default function AttendanceCardPage({ params }: { params: Promise<{ scheduleId: string }> }) {
   const { scheduleId } = use(params);
   const searchParams   = useSearchParams();
@@ -98,9 +100,11 @@ export default function AttendanceCardPage({ params }: { params: Promise<{ sched
   const [announceOpen, setAnnounceOpen] = useState(false);
   const [annTitle,     setAnnTitle]     = useState("");
   const [annBody,      setAnnBody]      = useState("");
+  const [annType,      setAnnType]      = useState<AnnouncementType>("GENERAL");
   const [sending,      setSending]      = useState(false);
 
   function openAnnounce() {
+    setAnnType("GENERAL");
     setAnnTitle(""); setAnnBody("");
     setAnnounceOpen(true);
   }
@@ -115,7 +119,11 @@ export default function AttendanceCardPage({ params }: { params: Promise<{ sched
     setSending(true);
     try {
       const { data } = await api.post<{ sent: number }>("/notifications/announce", {
-        sectionId, title: annTitle.trim(), body: annBody.trim(),
+        sectionId,
+        title: annTitle.trim(),
+        body: annBody.trim(),
+        type: annType,
+        ...(annType === "CANCEL_CLASS" ? { scheduleId, classDate } : {}),
       });
       toast.success(`ส่งประกาศถึงนักศึกษา ${data.sent} คนสำเร็จ`);
       setAnnounceOpen(false);
@@ -435,6 +443,27 @@ export default function AttendanceCardPage({ params }: { params: Promise<{ sched
         }
       >
         <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              ประเภทประกาศ <span className="text-danger">*</span>
+            </label>
+            <Select
+              options={[
+                { value: "GENERAL", label: "ทั่วไป" },
+                { value: "CANCEL_CLASS", label: "ยกคลาส" },
+                { value: "EXAM", label: "มีสอบ/ทดสอบ" },
+                { value: "RESCHEDULE", label: "เลื่อนเวลาเรียน" },
+              ]}
+              value={annType}
+              onChange={(e) => setAnnType(e.target.value as AnnouncementType)}
+            />
+            {annType === "CANCEL_CLASS" && (
+              <p className="mt-1 text-xs text-warning">
+                ระบบจะบันทึกวัน {formatDate(classDate)} เป็นวันยกคลาส และไม่นับเป็นตัวหาร %
+              </p>
+            )}
+          </div>
+
           <div>
             <p className="text-xs font-medium text-gray-500 mb-2">ข้อความสำเร็จรูป</p>
             <div className="flex flex-wrap gap-2">
