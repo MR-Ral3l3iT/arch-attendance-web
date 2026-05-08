@@ -5,6 +5,7 @@ import {
   ClipboardCheck,
   FileText,
   BarChart3,
+  Megaphone,
   Settings,
   type LucideIcon,
 } from "lucide-react";
@@ -22,6 +23,7 @@ const navSections: NavSection[] = [
     items: [
       { href: "/teacher/attendance", label: "เช็คชื่อ", icon: ClipboardCheck as LucideIcon },
       { href: "/teacher/leave-requests", label: "คำขอลา", icon: FileText as LucideIcon },
+      { href: "/teacher/announcements", label: "ประวัติประกาศ", icon: Megaphone as LucideIcon },
     ],
   },
   {

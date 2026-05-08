@@ -10,6 +10,7 @@ import {
   Clock,
   BarChart3,
   Settings,
+  Megaphone,
   type LucideIcon,
 } from "lucide-react";
 import { Sidebar, type NavSection } from "@/components/layout/Sidebar";
@@ -46,6 +47,7 @@ const navSections: NavSection[] = [
     title: "ระบบ",
     items: [
       { href: "/admin/reports", label: "รายงาน", icon: BarChart3 as LucideIcon },
+      { href: "/admin/announcements", label: "แจ้งข่าว", icon: Megaphone as LucideIcon },
       { href: "/admin/settings", label: "ตั้งค่าระบบ", icon: Settings as LucideIcon },
     ],
   },
