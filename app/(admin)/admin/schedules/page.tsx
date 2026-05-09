@@ -12,7 +12,7 @@ import { useFetch, parseApiError } from "@/hooks/useFetch";
 import { toast } from "@/store/toast.store";
 import api from "@/lib/api";
 import { getDayLabel, formatTeacherName } from "@/lib/utils";
-import type { Schedule, Section, Room, Semester } from "@/types";
+import type { Schedule, Section, Room, Semester, Teacher, PaginatedResponse } from "@/types";
 
 const DAY_OPTIONS = [
   { value: "MONDAY",    label: "จันทร์" },
@@ -26,6 +26,7 @@ const DAY_OPTIONS = [
 
 const scheduleSchema = z.object({
   sectionId:  z.string().min(1, "กรุณาเลือกกลุ่มเรียน"),
+  teacherId:  z.string().min(1, "กรุณาเลือกอาจารย์ผู้สอน"),
   dayOfWeek:  z.enum(["MONDAY","TUESDAY","WEDNESDAY","THURSDAY","FRIDAY","SATURDAY","SUNDAY"]),
   startTime:  z.string().min(1, "กรุณากรอกเวลาเริ่ม"),
   endTime:    z.string().min(1, "กรุณากรอกเวลาสิ้นสุด"),
@@ -40,6 +41,7 @@ export default function SchedulesPage() {
   const { data: sections }  = useFetch<Section[]>("/sections");
   const { data: rooms }     = useFetch<Room[]>("/rooms");
   const { data: semesters } = useFetch<Semester[]>("/semesters");
+  const { data: teachersRes } = useFetch<PaginatedResponse<Teacher>>("/teachers?page=1&limit=500");
 
   const [filterSemester, setFilter] = useState("");
   const [search, setSearch]         = useState("");
@@ -56,6 +58,10 @@ export default function SchedulesPage() {
   }));
   const roomOptions = (rooms ?? []).map((r) => ({ value: r.id, label: `${r.building.code} ${r.code} — ${r.name}` }));
   const semesterOptions = (semesters ?? []).map((s) => ({ value: s.id, label: `${s.name} (${s.academicYear.name})` }));
+  const teacherOptions = (teachersRes?.data ?? []).map((t) => ({
+    value: t.id,
+    label: `${`${t.firstName} ${t.lastName}`.trim()} (${t.code})`,
+  }));
 
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<ScheduleForm>({
     resolver: zodResolver(scheduleSchema),
@@ -63,17 +69,31 @@ export default function SchedulesPage() {
 
   useEffect(() => {
     if (modal.open) reset(modal.item
-      ? { sectionId: modal.item.section.id, dayOfWeek: modal.item.dayOfWeek,
+      ? { sectionId: modal.item.section.id, teacherId: modal.item.teacher.id, dayOfWeek: modal.item.dayOfWeek,
           startTime: modal.item.startTime, endTime: modal.item.endTime, roomId: modal.item.room.id }
-      : { sectionId: "", dayOfWeek: "MONDAY", startTime: "08:00", endTime: "11:00", roomId: "" });
+      : { sectionId: "", teacherId: "", dayOfWeek: "MONDAY", startTime: "08:00", endTime: "11:00", roomId: "" });
   }, [modal.open, modal.item, reset]);
 
   async function onSubmit(v: ScheduleForm) {
+    const section = sections?.find((s) => s.id === v.sectionId);
+    if (!section) {
+      toast.error("ไม่พบกลุ่มเรียนที่เลือก");
+      return;
+    }
+    const payload = {
+      sectionId: v.sectionId,
+      semesterId: section.semesterId,
+      teacherId: v.teacherId,
+      dayOfWeek: v.dayOfWeek,
+      startTime: v.startTime,
+      endTime: v.endTime,
+      roomId: v.roomId,
+    };
     try {
       if (modal.item) {
-        await api.patch(`/schedules/${modal.item.id}`, v);
+        await api.patch(`/schedules/${modal.item.id}`, payload);
       } else {
-        await api.post("/schedules", v);
+        await api.post("/schedules", payload);
       }
       toast.success(modal.item ? "อัปเดตสำเร็จ" : "เพิ่มตารางเรียนสำเร็จ");
       setModal({ open: false }); refetch();
@@ -161,6 +181,8 @@ export default function SchedulesPage() {
         <form id="sched-form" onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <Select label="กลุ่มเรียน" required options={sectionOptions} placeholder="เลือกกลุ่มเรียน"
             error={errors.sectionId?.message} {...register("sectionId")} />
+          <Select label="อาจารย์ผู้สอน" required options={teacherOptions} placeholder="เลือกอาจารย์"
+            error={errors.teacherId?.message} {...register("teacherId")} />
           <div className="grid grid-cols-3 gap-3">
             <Select label="วัน" required options={DAY_OPTIONS} error={errors.dayOfWeek?.message} {...register("dayOfWeek")} />
             <Input label="เวลาเริ่ม" type="time" required error={errors.startTime?.message} {...register("startTime")} />
