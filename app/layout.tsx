@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Prompt } from "next/font/google";
+import { headers } from "next/headers";
 import { Providers } from "@/components/Providers";
 import "./globals.css";
 
@@ -15,13 +16,17 @@ export const metadata: Metadata = {
   description: "ระบบบันทึกการเข้าเรียนสำหรับนักศึกษา",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const h = await headers();
+  const locale = h.get("x-locale") ?? "th";
+  const htmlLang = locale === "en" ? "en" : "th";
+
   return (
-    <html lang="th">
+    <html lang={htmlLang} suppressHydrationWarning>
       <body className={`${prompt.variable} font-sans antialiased`}>
         <Providers>{children}</Providers>
       </body>
