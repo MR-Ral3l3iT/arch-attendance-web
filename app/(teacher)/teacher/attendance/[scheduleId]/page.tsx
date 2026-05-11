@@ -392,7 +392,11 @@ export default function AttendanceCardPage({ params }: { params: Promise<{ sched
               </div>
               <div>
                 <p className="text-xs text-gray-400">เวลาเช็คชื่อ</p>
-                <p className="font-medium">{detailRecord.checkInTime ? formatDateTime(detailRecord.checkInTime) : "—"}</p>
+                <p className="font-medium">
+                  {detailRecord.checkedAt || detailRecord.checkInTime
+                    ? formatDateTime((detailRecord.checkedAt ?? detailRecord.checkInTime)!)
+                    : "—"}
+                </p>
               </div>
               {detailRecord.latitude && (
                 <div className="col-span-2">

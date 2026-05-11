@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, use, useMemo, useRef } from "react";
+import { useState, use, useMemo, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Users, ChevronRight, CalendarDays, ClipboardList, Search, X } from "lucide-react";
+import { Users, ChevronRight, CalendarDays, ClipboardList, Search, X, Eye } from "lucide-react";
 import { PageHeader, Card, Table, Button, Modal, Badge, Avatar, Alert, Select, Pagination } from "@/components/ui";
 import { useFetch } from "@/hooks/useFetch";
 import { cn, formatDate } from "@/lib/utils";
@@ -10,6 +10,7 @@ import type { AttendanceStatus } from "@/types";
 
 const API_URL   = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 const PAGE_SIZE = 20;
+const LOG_PAGE_SIZE = 8;
 
 /* ── Types ── */
 interface StudentSummary {
@@ -29,7 +30,8 @@ interface SummaryData {
 
 interface AttendanceLog {
   id: string; status: AttendanceStatus; classDate: string;
-  checkInTime?: string; note?: string;
+  checkInTime?: string; checkedAt?: string; note?: string;
+  selfieUrl?: string | null; latitude?: number | null; longitude?: number | null;
 }
 
 const STATUS_META: Record<AttendanceStatus, { label: string; variant: "success" | "warning" | "danger" | "info" | "secondary" }> = {
@@ -113,9 +115,25 @@ export default function ScheduleSummaryPage({ params }: { params: Promise<{ sche
 
   /* ── student log modal ── */
   const [selected, setSelected] = useState<StudentRow | null>(null);
+  const [logPage, setLogPage] = useState(1);
+  const [selfieLog, setSelfieLog] = useState<AttendanceLog | null>(null);
   const { data: logs, loading: ll } = useFetch<AttendanceLog[]>(
     selected ? `/attendance/student/${selected.student.id}?scheduleId=${scheduleId}` : null,
   );
+  useEffect(() => {
+    setLogPage(1);
+    setSelfieLog(null);
+  }, [selected?.student.id]);
+
+  const sortedLogs = useMemo(
+    () => [...(logs ?? [])].sort((a, b) => a.classDate.localeCompare(b.classDate)),
+    [logs],
+  );
+  const logTotalPages = Math.max(1, Math.ceil(sortedLogs.length / LOG_PAGE_SIZE));
+  const pagedLogs = sortedLogs.slice((logPage - 1) * LOG_PAGE_SIZE, logPage * LOG_PAGE_SIZE);
+  useEffect(() => {
+    if (logPage > logTotalPages) setLogPage(logTotalPages);
+  }, [logPage, logTotalPages]);
 
   return (
     <div>
@@ -274,9 +292,11 @@ export default function ScheduleSummaryPage({ params }: { params: Promise<{ sche
             ) : !logs || logs.length === 0 ? (
               <p className="text-sm text-gray-400 text-center py-6">ยังไม่มีบันทึกการเข้าเรียน</p>
             ) : (
-              <div className="max-h-[400px] overflow-y-auto scrollbar-thin space-y-1.5 pr-1">
-                {[...logs].sort((a, b) => a.classDate.localeCompare(b.classDate)).map((log) => {
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                {pagedLogs.map((log) => {
                   const meta = STATUS_META[log.status] ?? STATUS_META.NOT_CHECKED;
+                  const checkedTime = log.checkedAt ?? log.checkInTime;
                   return (
                     <div key={log.id}
                       className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors">
@@ -284,19 +304,84 @@ export default function ScheduleSummaryPage({ params }: { params: Promise<{ sche
                         {formatDate(log.classDate)}
                       </span>
                       <Badge variant={meta.variant}>{meta.label}</Badge>
-                      {log.checkInTime && (
+                      {checkedTime && (
                         <span className="text-xs text-gray-400">
-                          {new Date(log.checkInTime).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })} น.
+                          {new Date(checkedTime).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })} น.
                         </span>
                       )}
+                      {log.selfieUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setSelfieLog(log)}
+                          className="ml-auto inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-primary hover:bg-primary/5 transition-colors"
+                        >
+                          <Eye size={13} /> ดูรูป
+                        </button>
+                      )}
                       {log.note && (
-                        <span className="text-xs text-gray-400 truncate ml-auto max-w-[160px]">{log.note}</span>
+                        <span className={cn("text-xs text-gray-400 truncate max-w-[160px]", !log.selfieUrl && "ml-auto")}>{log.note}</span>
                       )}
                     </div>
                   );
                 })}
+                </div>
+                <Pagination
+                  page={logPage}
+                  totalPages={logTotalPages}
+                  total={sortedLogs.length}
+                  limit={LOG_PAGE_SIZE}
+                  onPageChange={setLogPage}
+                />
               </div>
             )}
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        open={!!selfieLog}
+        onClose={() => setSelfieLog(null)}
+        title="รูปเช็คอิน"
+        size="md"
+        footer={<Button variant="secondary" onClick={() => setSelfieLog(null)}>ปิด</Button>}
+      >
+        {selfieLog && (
+          <div className="space-y-4">
+            {selfieLog.selfieUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={selfieLog.selfieUrl}
+                alt="selfie"
+                className="w-full max-h-[520px] object-contain rounded-xl bg-gray-100"
+              />
+            )}
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <p className="text-xs text-gray-400">วันที่</p>
+                <p className="font-medium">{formatDate(selfieLog.classDate)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-400">เวลาเช็คชื่อ</p>
+                <p className="font-medium">
+                  {selfieLog.checkedAt || selfieLog.checkInTime
+                    ? new Date((selfieLog.checkedAt ?? selfieLog.checkInTime)!).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })
+                    : "—"}
+                </p>
+              </div>
+              {selfieLog.latitude != null && selfieLog.longitude != null && (
+                <div className="col-span-2">
+                  <p className="text-xs text-gray-400">พิกัด GPS</p>
+                  <a
+                    href={`https://maps.google.com/?q=${selfieLog.latitude},${selfieLog.longitude}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary underline text-sm"
+                  >
+                    {selfieLog.latitude.toFixed(5)}, {selfieLog.longitude.toFixed(5)}
+                  </a>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </Modal>

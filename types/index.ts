@@ -226,6 +226,7 @@ export interface AttendanceRecord {
   status: AttendanceStatus;
   classDate: string;
   checkInTime?: string;
+  checkedAt?: string;
   latitude?: number;
   longitude?: number;
   selfieUrl?: string;
