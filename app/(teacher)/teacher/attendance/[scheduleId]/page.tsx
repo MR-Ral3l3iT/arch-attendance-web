@@ -8,7 +8,7 @@ import { useFetch, parseApiError } from "@/hooks/useFetch";
 import { toast } from "@/store/toast.store";
 import api from "@/lib/api";
 import { cn, formatDate, formatDateTime, getDayLabel } from "@/lib/utils";
-import type { Schedule, Enrollment, AttendanceRecord, AttendanceStatus } from "@/types";
+import type { Schedule, Enrollment, AttendanceRecord, AttendanceStatus, Student } from "@/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
@@ -164,7 +164,16 @@ export default function AttendanceCardPage({ params }: { params: Promise<{ sched
   }
 
   const loading  = el || rl;
-  const students = (enrollments ?? []).map((e) => e.student);
+  const students = useMemo<Student[]>(() => {
+    const byId = new Map<string, Student>();
+    for (const e of enrollments ?? []) {
+      byId.set(e.student.id, e.student);
+    }
+    for (const r of records ?? []) {
+      byId.set(r.student.id, r.student);
+    }
+    return Array.from(byId.values()).sort((a, b) => a.code.localeCompare(b.code));
+  }, [enrollments, records]);
 
   const displayed = useMemo(() => {
     return students.filter((s) => {
@@ -292,7 +301,7 @@ export default function AttendanceCardPage({ params }: { params: Promise<{ sched
           ))}
         </div>
       ) : students.length === 0 ? (
-        <Alert variant="info">ไม่มีนักศึกษาลงทะเบียนในรายวิชานี้</Alert>
+        <Alert variant="info">ยังไม่มีนักศึกษาลงทะเบียนหรือข้อมูลเช็คชื่อในรายวิชานี้</Alert>
       ) : displayed.length === 0 ? (
         <div className="text-sm text-gray-400 text-center py-12">ไม่พบนักศึกษาตามเงื่อนไขที่เลือก</div>
       ) : (
