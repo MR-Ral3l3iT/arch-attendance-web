@@ -104,6 +104,10 @@ export interface Building {
   id: string;
   code: string;
   name: string;
+  latitude?: number;
+  longitude?: number;
+  /** รัศมีตรวจสอบ GPS (เมตร) — ตรงกับฟิลด์ API/Prisma */
+  radiusMeters?: number;
 }
 
 export interface Room {

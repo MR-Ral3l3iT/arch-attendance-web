@@ -18,24 +18,18 @@ const LIMIT = 20;
 // ─── Buildings ────────────────────────────────────────────────────────────────
 
 const buildingSchema = z.object({
-  code:      z.string().min(1, "กรุณากรอกรหัส"),
-  name:      z.string().min(1, "กรุณากรอกชื่อ"),
-  latitude:  z.coerce.number().optional(),
-  longitude: z.coerce.number().optional(),
-  gpsRadius: z.coerce.number().min(10, "รัศมีต้องอย่างน้อย 10 เมตร").optional(),
+  code:          z.string().min(1, "กรุณากรอกรหัส"),
+  name:          z.string().min(1, "กรุณากรอกชื่อ"),
+  latitude:      z.coerce.number().optional(),
+  longitude:     z.coerce.number().optional(),
+  radiusMeters:  z.coerce.number().min(10, "รัศมีต้องอย่างน้อย 10 เมตร").max(500, "รัศมีไม่เกิน 500 เมตร").optional(),
 });
 type BuildingForm = z.infer<typeof buildingSchema>;
 
-interface BuildingData extends Building {
-  latitude?: number;
-  longitude?: number;
-  gpsRadius?: number;
-}
-
 function BuildingsSection() {
-  const { data, loading, error, refetch } = useFetch<BuildingData[]>("/buildings");
-  const [modal, setModal]         = useState<{ open: boolean; item?: BuildingData }>({ open: false });
-  const [deleteTarget, setDelete] = useState<BuildingData | null>(null);
+  const { data, loading, error, refetch } = useFetch<Building[]>("/buildings");
+  const [modal, setModal]         = useState<{ open: boolean; item?: Building }>({ open: false });
+  const [deleteTarget, setDelete] = useState<Building | null>(null);
   const [deleting, setDeleting]   = useState(false);
   const [search, setSearch]       = useState("");
   const [page, setPage]           = useState(1);
@@ -50,8 +44,9 @@ function BuildingsSection() {
     if (modal.open) {
       reset(modal.item
         ? { code: modal.item.code, name: modal.item.name,
-            latitude: modal.item.latitude, longitude: modal.item.longitude, gpsRadius: modal.item.gpsRadius }
-        : { code: "", name: "", gpsRadius: 100 });
+            latitude: modal.item.latitude, longitude: modal.item.longitude,
+            radiusMeters: modal.item.radiusMeters ?? 100 }
+        : { code: "", name: "", radiusMeters: 100 });
     }
   }, [modal.open, modal.item, reset]);
 
@@ -102,7 +97,9 @@ function BuildingsSection() {
           { key: "code", header: "รหัส", className: "w-24" },
           { key: "name", header: "ชื่ออาคาร" },
           { key: "gps", header: "พิกัด GPS", render: (r) =>
-            r.latitude ? `${r.latitude?.toFixed(4)}, ${r.longitude?.toFixed(4)} (r=${r.gpsRadius}m)` : "—"
+            r.latitude != null && r.longitude != null
+              ? `${r.latitude.toFixed(4)}, ${r.longitude.toFixed(4)} (r=${r.radiusMeters ?? 100}m)`
+              : "—"
           },
           { key: "actions", header: "", render: (r) => (
             <div className="flex justify-end gap-1">
@@ -134,7 +131,7 @@ function BuildingsSection() {
           <div className="grid grid-cols-3 gap-3">
             <Input label="Latitude" type="number" step="any" placeholder="13.7563" error={errors.latitude?.message} {...register("latitude")} />
             <Input label="Longitude" type="number" step="any" placeholder="100.5018" error={errors.longitude?.message} {...register("longitude")} />
-            <Input label="รัศมี (เมตร)" type="number" placeholder="100" error={errors.gpsRadius?.message} {...register("gpsRadius")} />
+            <Input label="รัศมี (เมตร)" type="number" placeholder="100" error={errors.radiusMeters?.message} {...register("radiusMeters")} />
           </div>
         </form>
       </Modal>
